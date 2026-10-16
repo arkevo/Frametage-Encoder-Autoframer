@@ -1,0 +1,25 @@
+# Reframe stage, install step 1 of 2: torch and torchvision, CUDA build.
+# install.sh installs this file FIRST into .venv-reframe/, checks that
+# torch is exactly the build pinned here (CUDA 12.8, verify_env's
+# EXPECTED_CUDA), then installs requirements.txt and checks again.
+#
+# torch MUST come from the cu128 index. PyPI's torch is a CPU-only build
+# on Windows and may be a different CUDA build on Linux; either one
+# imports fine and then fails the environment check. The +cu128 local
+# version in each pin can only be satisfied by the CUDA index.
+#
+# Because this file sets its own index options, pip uses exactly these
+# two indexes for this step and ignores PIP_INDEX_URL and
+# PIP_EXTRA_INDEX_URL. Proxy and cache settings (HTTPS_PROXY,
+# PIP_NO_CACHE_DIR) still apply. Behind a package mirror, install this
+# step by hand from the mirror's copy of the cu128 index, then run
+# install.sh again: it finds the pins already satisfied and keeps them.
+#
+# Wheels exist for CPython 3.10 to 3.14 on 64-bit Windows and Linux
+# (checked 2026-10-15). Verified on an RTX 5080 (sm_120) under Python
+# 3.12.10: install wall time 123 s, resulting virtualenv 4475 MiB.
+--index-url https://download.pytorch.org/whl/cu128
+--extra-index-url https://pypi.org/simple
+
+torch==2.11.0+cu128
+torchvision==0.26.0+cu128

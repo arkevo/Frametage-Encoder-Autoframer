@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ftea"
+dynamic = ["version"]
+description = "Auto-reframe landscape video to vertical 9:16 and encode it as a six-variant HLS package with NVIDIA NVENC."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+# hls.min.js ships in the wheel, so its license does too.
+license-files = ["LICENSE", "ftea/player/hls.js-LICENSE.txt"]
+authors = [{ name = "Frametage-Encoder-Autoframer contributors" }]
+keywords = ["vertical-video", "hls", "av1", "auto-reframe", "nvenc", "ffmpeg"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Environment :: GPU :: NVIDIA CUDA",
+    "Topic :: Multimedia :: Video :: Conversion",
+]
+# The encoder is standard-library only by design. The reframe stage's
+# CUDA stack lives in ftea/reframe/requirements*.txt and is installed into
+# its own virtualenv by install.sh; it must never become an extra here.
+dependencies = []
+
+[project.optional-dependencies]
+test = ["pytest>=8", "numpy>=1.26"]
+
+[project.scripts]
+ftea = "ftea.cli:main"
+
+[project.urls]
+Repository = "https://github.com/arkevo/Frametage-Encoder-Autoframer"
+Issues = "https://github.com/arkevo/Frametage-Encoder-Autoframer/issues"
+
+[tool.setuptools.dynamic]
+version = { attr = "ftea.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["ftea*"]
+exclude = ["*.tests", "*.tests.*"]
+
+[tool.setuptools.package-data]
+ftea = ["player/*.html", "player/*.js", "player/*.txt"]
+"ftea.reframe" = ["requirements*.txt"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["ftea"]
+addopts = "-ra --strict-markers"
+markers = [
+    "gpu: slow tests that want an NVIDIA GPU or a real ffmpeg; they skip themselves when it is absent (select with -m gpu)",
+    "ffmpeg: tests that need real ffmpeg/ffprobe binaries on PATH; they skip themselves otherwise (select with -m ffmpeg)",
+]

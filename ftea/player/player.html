@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ftea player</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; color: #e6e6e6;
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  video { display: block; width: 100vw; height: 100vh; height: 100dvh;
+    object-fit: contain; background: #000; }
+  #message { position: fixed; left: 0; right: 0; top: 40%;
+    padding: 16px 24px; text-align: center; }
+  #info { position: fixed; left: 8px; top: 8px; max-width: calc(100vw - 32px);
+    padding: 6px 8px; border-radius: 4px; background: rgba(0, 0, 0, 0.72);
+    font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace;
+    white-space: pre-wrap; pointer-events: none; }
+  #message:empty, #info:empty { display: none; }
+</style>
+</head>
+<body>
+<video id="video" controls playsinline preload="metadata"></video>
+<div id="message" role="alert"></div>
+<div id="info"></div>
+<script src="hls.min.js"></script>
+<script id="ftea-logic">
+/* The page's decisions, kept apart from the page so they can be tested
+   without a browser: which player to use, which playlist may be played,
+   and what the ?info=1 box says. */
+var ftea = (function () {
+  "use strict";
+  var MASTER = "master.m3u8";
+
+  /* caps.hlsjs: hls.js can run here (Media Source, or Managed Media
+     Source on an iPhone). caps.native: the browser plays HLS itself.
+     requested: "hlsjs" or "native" from ?player=, otherwise ignored. */
+  function choosePath(caps, requested) {
+    if (requested === "hlsjs") { return caps.hlsjs ? "hlsjs" : "none"; }
+    if (requested === "native") { return caps.native ? "native" : "none"; }
+    if (caps.native && !caps.hlsjs) { return "native"; }
+    if (caps.hlsjs) { return "hlsjs"; }
+    if (caps.native) { return "native"; }
+    return "none";
+  }
+
+  function param(search, name) {
+    var pairs = String(search || "").replace(/^\?/, "").split("&");
+    for (var i = 0; i < pairs.length; i++) {
+      var cut = pairs[i].indexOf("=");
+      var key = cut < 0 ? pairs[i] : pairs[i].slice(0, cut);
+      if (key === name) {
+        var raw = cut < 0 ? "" : pairs[i].slice(cut + 1);
+        try {
+          return decodeURIComponent(raw.replace(/\+/g, " "));
+        } catch (err) {
+          return "";
+        }
+      }
+    }
+    return "";
+  }
+
+  /* Only a playlist inside this folder may be played, never another
+     site's and never a file above this folder. */
+  function isInside(value) {
+    return /^[A-Za-z0-9_][A-Za-z0-9_.\/-]*\.m3u8$/.test(value) &&
+      value.indexOf("..") < 0 && value.indexOf("//") < 0;
+  }
+
+  function playlistFrom(search) {
+    var value = param(search, "src");
+    return isInside(value) ? value : MASTER;
+  }
+
+  /* The ?src= value refused by playlistFrom, or "" when none was. */
+  function ignoredSrc(search) {
+    var value = param(search, "src");
+    return value && !isInside(value) ? value : "";
+  }
+
+  /* Why nothing can play: hls.min.js missing, a ?player= this browser
+     lacks while the default would work, or the browser itself. */
+  function noPlayerMessage(caps, requested, hlsLoaded) {
+    var known = requested === "hlsjs" || requested === "native";
+    if (known && choosePath(caps, "") !== "none") {
+      return "?player=" + requested + " is not available in this " +
+        "browser. Remove ?player= from the address to use the default " +
+        "player.";
+    }
+    if (!hlsLoaded) {
+      return "hls.min.js did not load (it must be in the same folder as " +
+        "player.html), and this browser cannot play the video without it.";
+    }
+    return "This browser cannot play this video. Try Safari on an " +
+      "iPhone, or Chrome or Firefox.";
+  }
+
+  function codecFamily(codecs) {
+    var text = String(codecs || "");
+    if (text.indexOf("av01") === 0) { return "AV1"; }
+    if (text.indexOf("avc1") === 0) { return "H.264"; }
+    return text || "unknown codec";
+  }
+
+  function describe(state) {
+    var lines;
+    if (state.path === "native") {
+      lines = ["player: native HLS", "variant: chosen by the browser"];
+    } else {
+      lines = [
+        "player: hls.js " + state.version,
+        "variants: " + state.playable + " of " + state.listed + " playable"
+      ];
+      if (state.size) {
+        lines.push("now: " + state.size + " " + codecFamily(state.codecs));
+      }
+    }
+    if (state.src && state.src !== MASTER) {
+      lines.push("playlist: " + state.src);
+    }
+    if (state.ignored) {
+      lines.push("ignored playlist: " + state.ignored);
+    }
+    return lines.join("\n");
+  }
+
+  return {
+    MASTER: MASTER, choosePath: choosePath, param: param,
+    playlistFrom: playlistFrom, ignoredSrc: ignoredSrc,
+    noPlayerMessage: noPlayerMessage, codecFamily: codecFamily,
+    describe: describe
+  };
+}());
+if (typeof module !== "undefined" && module.exports) { module.exports = ftea; }
+</script>
+<script>
+(function () {
+  "use strict";
+  var video = document.getElementById("video");
+  var message = document.getElementById("message");
+  var info = document.getElementById("info");
+  var search = window.location.search;
+  var showInfo = ftea.param(search, "info") === "1";
+  var src = ftea.playlistFrom(search);
+  var ignored = ftea.ignoredSrc(search);
+  var Hls = window.Hls;
+  var caps = {
+    hlsjs: !!(Hls && Hls.isSupported()),
+    native: video.canPlayType("application/vnd.apple.mpegurl") !== ""
+  };
+  var requested = ftea.param(search, "player");
+  var path = ftea.choosePath(caps, requested);
+  var state = {
+    path: path, version: Hls ? Hls.version : "", listed: 0, playable: 0,
+    size: "", codecs: "", src: src, ignored: ignored
+  };
+
+  function say(text) { message.textContent = text; }
+  function show() {
+    if (showInfo) { info.textContent = ftea.describe(state); }
+  }
+  function setPoster(names) {
+    if (!names.length) { return; }
+    var probe = new Image();
+    probe.onload = function () { video.poster = names[0]; };
+    probe.onerror = function () { setPoster(names.slice(1)); };
+    probe.src = names[0];
+  }
+
+  setPoster(["thumbnail.webp", "thumbnail.jpg"]);
+  if (ignored) {
+    console.warn("ftea: ignored the playlist " + ignored + " named in " +
+      "the address: only a playlist inside this folder can be played. " +
+      "Playing " + ftea.MASTER + ".");
+  }
+  if (path === "none") {
+    say(ftea.noPlayerMessage(caps, requested, !!Hls));
+    return;
+  }
+  if (path === "native") {
+    video.src = src;
+    video.addEventListener("error", function () {
+      say("Playback failed (media error " +
+        (video.error ? video.error.code : "unknown") + ").");
+    });
+    show();
+    return;
+  }
+
+  /* Managed Media Source (iPhone) only plays when remote playback is
+     off or an alternative source is offered, and there is none here. */
+  video.disableRemotePlayback = true;
+  var hls = new Hls();
+  var recovered = false;
+  /* hls.js fires MANIFEST_PARSED from inside its own handling of
+     MANIFEST_LOADED, so this page hears PARSED first. Each count is
+     kept as it arrives, and the two are compared once both are known. */
+  function counted() {
+    if (state.listed && state.playable && state.playable < state.listed) {
+      console.warn("ftea: this browser skipped " +
+        (state.listed - state.playable) + " variant(s) it cannot decode");
+    }
+    show();
+  }
+  hls.on(Hls.Events.MANIFEST_LOADED, function (event, data) {
+    state.listed = data.levels.length;
+    counted();
+  });
+  hls.on(Hls.Events.MANIFEST_PARSED, function (event, data) {
+    state.playable = data.levels.length;
+    counted();
+  });
+  hls.on(Hls.Events.LEVEL_SWITCHED, function (event, data) {
+    var level = hls.levels[data.level];
+    state.size = level ? level.width + "x" + level.height : "";
+    state.codecs = level ? level.videoCodec : "";
+    show();
+  });
+  hls.on(Hls.Events.ERROR, function (event, data) {
+    if (!data.fatal) { return; }
+    if (data.type === Hls.ErrorTypes.MEDIA_ERROR && !recovered) {
+      recovered = true;
+      hls.recoverMediaError();
+      return;
+    }
+    say("Playback failed: " + data.details + ".");
+    hls.destroy();
+  });
+  hls.loadSource(src);
+  hls.attachMedia(video);
+}());
+</script>
+</body>
+</html>

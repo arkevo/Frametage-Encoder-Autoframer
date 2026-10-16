@@ -1,0 +1,10 @@
+# Store and check out every text file with LF endings, so shell scripts
+# run unchanged under Git Bash on Windows and under bash on Linux.
+* text=auto eol=lf
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary

@@ -1,0 +1,67 @@
+# --- Python ------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+/build/
+/dist/
+
+# --- Virtualenvs: encoder (.venv) and reframe stage (.venv-reframe) ----
+/.venv/
+/.venv-reframe/
+
+# --- Local settings: never commit. config.env.example is the template. -
+*.env
+.env
+config.env*
+!/config.env.example
+
+# --- Runtime data (created on demand) ----------------------------------
+/input/*
+!/input/.gitkeep
+/output/*
+!/output/.gitkeep
+/work/
+/models/
+
+# --- Video and stream files never enter the repository -----------------
+# Tests generate their own inputs; README images live in docs/images/.
+# Every extension below is spelled case-insensitively, [mM][oO][vV] and
+# so on: Linux git matches case-sensitively, and phones write CLIP.MOV.
+*.[mM][pP]4
+*.[mM][oO][vV]
+*.[mM][kK][vV]
+*.[aA][vV][iI]
+*.[wW][eE][bB][mM]
+*.[mM]4[sS]
+*.[mM]3[uU]8
+*.[yY]4[mM]
+
+# --- Film frame stills, extracted audio and model weights ---------------
+# Frames and audio from a film are copyrighted, and a binary file is
+# invisible to every text scan. Images are re-allowed only in docs/images/,
+# one extension at a time, so docs/images/clip.mp4 stays ignored.
+*.[wW][eE][bB][pP]
+*.[pP][nN][gG]
+*.[jJ][pP][gG]
+*.[jJ][pP][eE][gG]
+*.[gG][iI][fF]
+!/docs/images/*.[wW][eE][bB][pP]
+!/docs/images/*.[pP][nN][gG]
+!/docs/images/*.[jJ][pP][gG]
+!/docs/images/*.[jJ][pP][eE][gG]
+!/docs/images/*.[gG][iI][fF]
+*.[mM]4[aA]
+*.[aA][aA][cC]
+*.[wW][aA][vV]
+*.[fF][lL][aA][cC]
+*.[oO][nN][nN][xX]
+*.[pP][tT][hH]
+*.[pP][tT]
+*.[sS][aA][fF][eE][tT][eE][nN][sS][oO][rR][sS]
+
+# --- OS and editor clutter ---------------------------------------------
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

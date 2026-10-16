@@ -1,0 +1,30 @@
+# Reframe stage, install step 2 of 2: everything that is not torch.
+# install.sh installs this file into .venv-reframe/ only AFTER
+# requirements-torch.txt, then checks that torch is still the CUDA
+# build: a package installed later can silently replace it with a build
+# from PyPI. Never install either file into the encoder's .venv: the
+# encoder is standard-library only and must not inherit a
+# multi-gigabyte CUDA stack.
+#
+# To install by hand, use the reframe environment's interpreter
+# (.venv-reframe/Scripts/python.exe on Windows, .venv-reframe/bin/python
+# on Linux) and keep this order:
+#   <python> -m pip install -r ftea/reframe/requirements-torch.txt
+#   <python> -m pip install -r ftea/reframe/requirements.txt
+
+opencv-python==5.0.0.93
+
+# Face detection uses OpenCV's bundled YuNet through cv2.FaceDetectorYN
+# over OpenCV Zoo's YuNet weights (MIT): no extra package, just an .onnx
+# file install.sh fetches. Person detection uses torchvision's COCO
+# Faster R-CNN (BSD-3-Clause), whose weights install.sh places in the
+# torch hub cache under the models folder.
+#
+# Text detection uses OpenCV's bundled DB detector
+# (cv2.dnn.TextDetectionModel_DB) over OpenCV Zoo's PP-OCRv3 weights
+# (Apache-2.0, PaddlePaddle Authors): again no extra package, just an
+# .onnx file install.sh fetches.
+#
+# DELIBERATELY ABSENT: ultralytics. It and its pretrained YOLO weights
+# are AGPL-3.0, which this Apache-2.0 project cannot ship. Do not add it
+# to either file.
