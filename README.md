@@ -32,6 +32,103 @@ a phone app for watching film clips. It is open source for three
 reasons: to show how the technology behind the app works, to give
 creators a free tool, and to find people who want to help improve it.
 
+## How it works
+
+```mermaid
+flowchart TD
+    V[A video] --> G{Landscape?}
+    G -- yes --> S[Split into shots]
+    S --> D[Find people, faces and title cards]
+    D --> T[Choose and track the subject]
+    T --> C[Plan a smooth camera path]
+    C --> R[Render a 9:16 video]
+    G -- "no: vertical or square" --> SC
+    R --> SC[Split into scenes]
+    SC --> P[Test-encode each scene twice and score both]
+    P --> E[Encode six variants with NVENC]
+    E --> H[Package: playlists, 2-second segments, player, reports]
+```
+
+The reframe stage runs as a separate program in its own Python
+environment, `.venv-reframe`, because it needs CUDA builds of torch and
+OpenCV, about 4.5 GB on Windows. The encoder needs only Python's standard
+library and your FFmpeg, so `ftea run --no-reframe` works without the
+reframe environment at all.
+
+### Following the subject instead of cropping the centre
+
+A 9:16 window cut from a 16:9 frame keeps 0.32 of its width: 608 of 1920
+pixels. A fixed centre crop throws away whoever stands outside that
+middle strip, and in films people often do. `ftea` moves the window to
+follow them instead:
+
+1. **Shots.** The video is split at its cuts (`REFRAME_SCENE_THRESHOLD`),
+   so the camera starts fresh in each shot instead of panning across a
+   cut.
+2. **People and faces.** On every third frame of each shot
+   (`REFRAME_STRIDE`), a person detector (torchvision's Faster R-CNN, on
+   the GPU) and a face detector (OpenCV's YuNet) look for people. Each
+   has its own confidence floor, 0.8 for people and 0.35 for faces,
+   because the two score on different scales: in testing, person scores
+   reached 0.9856 while face scores never passed 0.7462, and below about
+   0.8 the person detector took lace and curtain textures, scoring around
+   0.60, for people.
+3. **Title cards.** On five frames of each shot, a text detector
+   (PP-OCRv3) looks for a title card: at least two lines of text, each at
+   least 4% of the frame's height, sharing one centre. Only that shape
+   counts, so a sign or graffiti in the background does not. A title shot
+   holds a still crop centred on the card, or is letterboxed, shown whole
+   with black bars, when the card with a small margin each side is wider
+   than the vertical frame.
+4. **Choosing the subject.** Detections are linked into tracks across
+   frames. Each track is scored on its size, with faces counting double
+   (`REFRAME_FACE_WEIGHT`), and on how central, how confident and how
+   lasting it is, so a two-frame flash cannot win. A new subject takes
+   over only when it scores at least 20% higher for a full second, so the
+   camera does not flick between two people.
+5. **The camera path.** The virtual camera holds still while the subject
+   stays inside the middle 90% of the window (`REFRAME_DEAD_ZONE`), then
+   follows along a smoothed path (`REFRAME_SMOOTHING_HZ`) under a speed
+   limit (`REFRAME_MAX_PAN_FRAC_PER_SEC`), the way a camera operator
+   would, rather than a box locked to the subject.
+6. **Nobody in the shot.** A shot with no one in it gets a still, centred
+   crop. That is a normal result, not a failure. The detector can still
+   report a subject in such a shot, and the crop then follows that
+   instead; `--debug-video` shows when it happens.
+7. **Rendering.** The window's position is fed to FFmpeg frame by frame,
+   and the vertical video is rendered once, at high quality (HEVC on
+   NVENC at CQ 10), as the encoder's source.
+
+To see what the camera did, run
+`ftea reframe <video> --debug-video`: `debug.mp4` shows the original with
+the crop window as a red rectangle beside the result (see
+[the process guide](docs/PROCESS-GUIDE.md#making-only-a-vertical-video-with-ftea-reframe)).
+
+### Encoding scene by scene to a quality target
+
+A fixed bitrate has to be big enough for the hardest clip you will ever
+encode, so it spends too much on every easier one. `ftea` aims at a
+quality level instead, and lets the bitrate follow the content:
+
+1. **Scenes.** The clip is split at scene changes. Scenes shorter than a
+   second merge into a neighbour, and scenes longer than 10 seconds are
+   split.
+2. **Two test encodes per scene and variant.** Each scene is encoded at
+   the variant's starting quality setting, its CQ, minus and plus 4 (for
+   AV1 1080p, CQ 26 and CQ 34), and both results are scored with VMAF.
+   The encoder keeps the one closest to the variant's VMAF target that
+   still reaches it, or the higher-quality one if neither does. A lower
+   CQ means higher quality and more data.
+3. **Final encode.** Each scene is encoded with NVENC at its chosen
+   setting, under a bitrate cap, and the scenes are joined.
+
+This is a choice between two settings rather than a search, which keeps
+it fast: NVENC encodes in hardware, and each scene is tried only twice
+per variant.
+
+The numbers, the codec choices and how quality is measured are in
+[How it works](docs/HOW-IT-WORKS.md).
+
 ## What you get
 
 For every video, `ftea` writes one folder you can watch, host or share:
